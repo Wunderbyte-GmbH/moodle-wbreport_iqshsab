@@ -274,28 +274,59 @@ class sab_table extends wunderbyte_table {
     }
 
     /**
+     * Format the schulart column.
+     *
+     * @param object $values
+     * @return string
+     */
+    public function col_schulart($values): string {
+        return $this->render_customfield_value($values->schulart ?? '', 'schulart');
+    }
+
+    /**
      * Format the fach column.
      *
      * @param object $values
      * @return string
      */
     public function col_fach($values): string {
-        if (empty($values->fach)) {
+        return $this->render_customfield_value($values->fach ?? '', 'fach');
+    }
+
+    /**
+     * Format the kategorie column.
+     *
+     * @param object $values
+     * @return string
+     */
+    public function col_kategorie($values): string {
+        return $this->render_customfield_value($values->kategorie ?? '', 'kategorie');
+    }
+
+    /**
+     * Render a customfield value (single or comma-separated keys) via the
+     * wunderbyte_table customfield helper.
+     *
+     * @param string $rawvalue
+     * @param string $shortname
+     * @return string
+     */
+    private function render_customfield_value(string $rawvalue, string $shortname): string {
+        if ($rawvalue === '') {
             return '';
         }
-        $fieldcontroller = wbt_field_controller_info::get_instance_by_shortname('fach');
-
-        if (str_contains($values->fach, ',')) {
-            // Multiple values are stored as pipe-separated keys. Format each and join with comma+space.
-            $faecher = [];
-            foreach (explode(',', $values->fach) as $fachkey) {
-                $faecher[] = $fieldcontroller->get_option_value_by_key($fachkey);
-            }
-            return implode(', ', $faecher);
+        $fieldcontroller = wbt_field_controller_info::get_instance_by_shortname($shortname);
+        if (!$fieldcontroller) {
+            return s($rawvalue);
         }
-
-        $renderedfach = $fieldcontroller->get_option_value_by_key($values->fach);
-        return $renderedfach;
+        if (str_contains($rawvalue, ',')) {
+            $values = [];
+            foreach (explode(',', $rawvalue) as $key) {
+                $values[] = $fieldcontroller->get_option_value_by_key($key);
+            }
+            return implode(', ', $values);
+        }
+        return $fieldcontroller->get_option_value_by_key($rawvalue);
     }
 
     /**

@@ -77,7 +77,9 @@ class sab implements renderable, templatable, wbreport_interface {
             get_string('courseendtime', 'wbreport_iqshsab'),
             get_string('completed', 'wbreport_iqshsab'),
             get_string('completeddate', 'wbreport_iqshsab'),
+            get_string('schulart', 'wbreport_iqshsab'),
             get_string('fach', 'wbreport_iqshsab'),
+            get_string('kategorie', 'wbreport_iqshsab'),
             get_string('stunden', 'wbreport_iqshsab'),
             get_string('stunden_progress', 'wbreport_iqshsab'),
         ]);
@@ -89,7 +91,9 @@ class sab implements renderable, templatable, wbreport_interface {
             'courseendtime',
             'completed',
             'completeddate',
+            'schulart',
             'fach',
+            'kategorie',
             'stunden',
             'stunden_progress',
         ]);
@@ -97,6 +101,9 @@ class sab implements renderable, templatable, wbreport_interface {
         // Snapshot of the current time: shown in the page header and written as PDF footer.
         $now = time();
         $this->generatedat = $now;
+
+        // Fetch the booking module id once via PHP so the main SQL stays free of scalar subqueries.
+        $bookingmoduleid = (int) $DB->get_field('modules', 'id', ['name' => 'booking']);
 
         $fullnameuser = $DB->sql_concat("u.firstname", "' '", "u.lastname");
 
@@ -117,7 +124,9 @@ class sab implements renderable, templatable, wbreport_interface {
                 bo.courseendtime,
                 ba.completed,
                 CASE WHEN ba.completed = 1 THEN ba.completeddate ELSE NULL END AS completeddate,
+                COALESCE(cfd_schulart.value, '')       AS schulart,
                 COALESCE(cfd_fach.value, '')           AS fach,
+                COALESCE(cfd_kategorie.value, '')      AS kategorie,
                 COALESCE(cfd.decvalue, 0)              AS stunden,
                 COALESCE(tot.stunden_progress, 0)      AS stunden_progress,
                 {$now}                                 AS generated_at
@@ -128,7 +137,7 @@ class sab implements renderable, templatable, wbreport_interface {
                 ON bo.id = ba.optionid
             LEFT JOIN {course_modules} cm
                 ON  cm.instance = bo.bookingid
-                AND cm.module   = (SELECT id FROM {modules} WHERE name = 'booking' LIMIT 1)
+                AND cm.module   = {$bookingmoduleid}
             LEFT JOIN {customfield_field} cff
                 ON  cff.shortname  = 'stunden'
             LEFT JOIN {customfield_category} cfc
@@ -138,6 +147,15 @@ class sab implements renderable, templatable, wbreport_interface {
             LEFT JOIN {customfield_data} cfd
                 ON  cfd.instanceid = ba.optionid
                 AND cfd.fieldid    = cff.id
+            LEFT JOIN {customfield_field} cff_schulart
+                ON  cff_schulart.shortname = 'schulart'
+            LEFT JOIN {customfield_category} cfc_schulart
+                ON  cfc_schulart.id        = cff_schulart.categoryid
+                AND cfc_schulart.component = 'mod_booking'
+                AND cfc_schulart.area      = 'booking'
+            LEFT JOIN {customfield_data} cfd_schulart
+                ON  cfd_schulart.instanceid = ba.optionid
+                AND cfd_schulart.fieldid    = cff_schulart.id
             LEFT JOIN {customfield_field} cff_fach
                 ON  cff_fach.shortname = 'fach'
             LEFT JOIN {customfield_category} cfc_fach
@@ -147,6 +165,15 @@ class sab implements renderable, templatable, wbreport_interface {
             LEFT JOIN {customfield_data} cfd_fach
                 ON  cfd_fach.instanceid = ba.optionid
                 AND cfd_fach.fieldid    = cff_fach.id
+            LEFT JOIN {customfield_field} cff_kategorie
+                ON  cff_kategorie.shortname = 'kategorie'
+            LEFT JOIN {customfield_category} cfc_kategorie
+                ON  cfc_kategorie.id        = cff_kategorie.categoryid
+                AND cfc_kategorie.component = 'mod_booking'
+                AND cfc_kategorie.area      = 'booking'
+            LEFT JOIN {customfield_data} cfd_kategorie
+                ON  cfd_kategorie.instanceid = ba.optionid
+                AND cfd_kategorie.fieldid    = cff_kategorie.id
             LEFT JOIN (
                 SELECT
                     ba2.userid,
@@ -172,7 +199,9 @@ class sab implements renderable, templatable, wbreport_interface {
 
         $table->sortable(true, 'completeddate', SORT_DESC);
 
-        $table->define_fulltextsearchcolumns(['userfullname', 'firstname', 'lastname', 'email', 'optionname', 'fach']);
+        $table->define_fulltextsearchcolumns([
+            'userfullname', 'firstname', 'lastname', 'email', 'optionname', 'schulart', 'fach', 'kategorie',
+        ]);
 
         $table->define_sortablecolumns([
             'userfullname' => get_string('user', 'wbreport_iqshsab'),
@@ -181,9 +210,23 @@ class sab implements renderable, templatable, wbreport_interface {
             'courseendtime' => get_string('courseendtime', 'wbreport_iqshsab'),
             'completed' => get_string('completed', 'wbreport_iqshsab'),
             'completeddate' => get_string('completeddate', 'wbreport_iqshsab'),
+            'schulart' => get_string('schulart', 'wbreport_iqshsab'),
             'fach' => get_string('fach', 'wbreport_iqshsab'),
+            'kategorie' => get_string('kategorie', 'wbreport_iqshsab'),
             'stunden' => get_string('stunden', 'wbreport_iqshsab'),
         ]);
+
+        // Filter: by school type.
+        $schulartfilter = new standardfilter('schulart', get_string('schulart', 'wbreport_iqshsab'));
+        $table->add_filter($schulartfilter);
+
+        // Filter: by subject.
+        $fachfilter = new standardfilter('fach', get_string('fach', 'wbreport_iqshsab'));
+        $table->add_filter($fachfilter);
+
+        // Filter: by category.
+        $kategoriefilter = new standardfilter('kategorie', get_string('kategorie', 'wbreport_iqshsab'));
+        $table->add_filter($kategoriefilter);
 
         // Filter: completed yes/no.
         $completedfilter = new standardfilter('completed', get_string('completed', 'wbreport_iqshsab'));
