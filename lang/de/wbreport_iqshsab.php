@@ -35,4 +35,5 @@ $string['reportidentifier'] = 'iqshsab';
 $string['schulart']         = 'Schulart';
 $string['stunden']          = 'Stunden';
 $string['stunden_progress'] = 'Fortschritt gesamt (h)';
+$string['teacher']          = 'Trainer:in(nen)';
 $string['user']             = 'Nutzer:in';

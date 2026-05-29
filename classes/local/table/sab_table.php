@@ -196,6 +196,40 @@ class sab_table extends wunderbyte_table {
     }
 
     /**
+     * Format the teacher column.
+     *
+     * On download: "Firstname Lastname (email@example.com), ..." (export format).
+     * On HTML: comma-separated links to user profiles.
+     *
+     * @param object $values
+     * @return string
+     */
+    public function col_teacher($values): string {
+        if (empty($values->teacher)) {
+            return '';
+        }
+        if ($this->is_downloading()) {
+            return $values->teacher_export ?? $values->teacher;
+        }
+        $names = array_map('trim', explode(', ', $values->teacher));
+        $ids   = array_map('trim', explode(',', $values->teacher_userids ?? ''));
+        $links = [];
+        foreach ($names as $i => $name) {
+            if ($name === '') {
+                continue;
+            }
+            $uid = (int) ($ids[$i] ?? 0);
+            if ($uid > 0) {
+                $url     = new \moodle_url('/user/profile.php', ['id' => $uid]);
+                $links[] = '<a href="' . $url->out(false) . '">' . s($name) . '</a>';
+            } else {
+                $links[] = s($name);
+            }
+        }
+        return implode(', ', $links);
+    }
+
+    /**
      * Format the completed column as a readable yes/no value.
      *
      * @param object $values

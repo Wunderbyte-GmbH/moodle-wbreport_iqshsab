@@ -73,6 +73,7 @@ class sab implements renderable, templatable, wbreport_interface {
         $table->define_headers([
             get_string('user', 'wbreport_iqshsab'),
             get_string('optionname', 'wbreport_iqshsab'),
+            get_string('teacher', 'wbreport_iqshsab'),
             get_string('coursestarttime', 'wbreport_iqshsab'),
             get_string('courseendtime', 'wbreport_iqshsab'),
             get_string('completed', 'wbreport_iqshsab'),
@@ -87,6 +88,7 @@ class sab implements renderable, templatable, wbreport_interface {
         $table->define_columns([
             'userfullname',
             'optionname',
+            'teacher',
             'coursestarttime',
             'courseendtime',
             'completed',
@@ -106,6 +108,22 @@ class sab implements renderable, templatable, wbreport_interface {
         $bookingmoduleid = (int) $DB->get_field('modules', 'id', ['name' => 'booking']);
 
         $fullnameuser = $DB->sql_concat("u.firstname", "' '", "u.lastname");
+
+        // Teacher aggregation SQL (DB-specific: PostgreSQL vs MySQL/MariaDB).
+        $dbclass = get_class($DB);
+        if (strpos($dbclass, 'pgsql') !== false) {
+            $teachernamesagg   = "STRING_AGG(CONCAT(u_t.firstname, ' ', u_t.lastname), ', '"
+                               . " ORDER BY u_t.lastname, u_t.firstname)";
+            $teacherexportagg  = "STRING_AGG(CONCAT(u_t.firstname, ' ', u_t.lastname, ' (', u_t.email, ')'),"
+                               . " ', ' ORDER BY u_t.lastname, u_t.firstname)";
+            $teacheruseridsagg = "STRING_AGG(CAST(u_t.id AS TEXT), ',' ORDER BY u_t.lastname, u_t.firstname)";
+        } else {
+            $teachernamesagg   = "GROUP_CONCAT(CONCAT(u_t.firstname, ' ', u_t.lastname)"
+                               . " ORDER BY u_t.lastname, u_t.firstname SEPARATOR ', ')";
+            $teacherexportagg  = "GROUP_CONCAT(CONCAT(u_t.firstname, ' ', u_t.lastname, ' (', u_t.email, ')')"
+                               . " ORDER BY u_t.lastname, u_t.firstname SEPARATOR ', ')";
+            $teacheruseridsagg = "GROUP_CONCAT(u_t.id ORDER BY u_t.lastname, u_t.firstname SEPARATOR ',')";
+        }
 
         $fields = "m.*";
 
@@ -129,6 +147,9 @@ class sab implements renderable, templatable, wbreport_interface {
                 COALESCE(cfd_kategorie.value, '')      AS kategorie,
                 COALESCE(cfd.decvalue, 0)              AS stunden,
                 COALESCE(tot.stunden_progress, 0)      AS stunden_progress,
+                COALESCE(tch.teacher_names, '')        AS teacher,
+                COALESCE(tch.teacher_export, '')       AS teacher_export,
+                COALESCE(tch.teacher_userids, '')      AS teacher_userids,
                 {$now}                                 AS generated_at
             FROM {booking_answers} ba
             JOIN {user} u
@@ -192,6 +213,17 @@ class sab implements renderable, templatable, wbreport_interface {
                 GROUP BY ba2.userid
             ) tot
                 ON tot.userid = ba.userid
+            LEFT JOIN (
+                SELECT
+                    bt.optionid,
+                    {$teachernamesagg}   AS teacher_names,
+                    {$teacherexportagg}  AS teacher_export,
+                    {$teacheruseridsagg} AS teacher_userids
+                FROM {booking_teachers} bt
+                JOIN {user} u_t ON u_t.id = bt.userid
+                GROUP BY bt.optionid
+            ) tch
+                ON tch.optionid = bo.id
             WHERE ba.waitinglist = 0
         ) m";
 
@@ -200,12 +232,13 @@ class sab implements renderable, templatable, wbreport_interface {
         $table->sortable(true, 'completeddate', SORT_DESC);
 
         $table->define_fulltextsearchcolumns([
-            'userfullname', 'firstname', 'lastname', 'email', 'optionname', 'schulart', 'fach', 'kategorie',
+            'userfullname', 'firstname', 'lastname', 'email', 'optionname', 'teacher', 'schulart', 'fach', 'kategorie',
         ]);
 
         $table->define_sortablecolumns([
             'userfullname' => get_string('user', 'wbreport_iqshsab'),
             'optionname' => get_string('optionname', 'wbreport_iqshsab'),
+            'teacher' => get_string('teacher', 'wbreport_iqshsab'),
             'coursestarttime' => get_string('coursestarttime', 'wbreport_iqshsab'),
             'courseendtime' => get_string('courseendtime', 'wbreport_iqshsab'),
             'completed' => get_string('completed', 'wbreport_iqshsab'),
@@ -215,6 +248,10 @@ class sab implements renderable, templatable, wbreport_interface {
             'kategorie' => get_string('kategorie', 'wbreport_iqshsab'),
             'stunden' => get_string('stunden', 'wbreport_iqshsab'),
         ]);
+
+        // Filter: by teacher (full aggregated list per option).
+        $teacherfilter = new standardfilter('teacher', get_string('teacher', 'wbreport_iqshsab'));
+        $table->add_filter($teacherfilter);
 
         // Filter: by school type.
         $schulartfilter = new standardfilter('schulart', get_string('schulart', 'wbreport_iqshsab'));
